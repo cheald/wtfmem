@@ -1,6 +1,6 @@
 # wtfmem
 
-A native Go TUI dashboard for understanding Linux memory use. It reads `/proc`; no elevated privileges are required, though process details unavailable to your user will be skipped.
+A vibe-coded single-binary TUI for figuring out where my memory went. It's useful to me. Use if it if you like. My level of investment in this is very, very low. :)
 
 ![wtfmem dashboard](docs/dashboard.png)
 
