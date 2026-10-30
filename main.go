@@ -375,9 +375,31 @@ func meter(v, max uint64, w int, color lipgloss.Style) string {
 	if max == 0 {
 		max = 1
 	}
-	n := int(float64(w) * float64(v) / float64(max))
-	n = min(w, n)
-	return color.Render(strings.Repeat("█", n)) + muted.Render(strings.Repeat("░", w-n))
+	if w <= 0 {
+		return ""
+	}
+	levels := []string{"▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"}
+	amount := min(float64(w), float64(v)/float64(max)*float64(w))
+	whole := int(amount)
+	fraction := amount - float64(whole)
+	var out strings.Builder
+	if whole > 0 {
+		out.WriteString(color.Render(strings.Repeat("█", whole)))
+	}
+	partial := 0
+	if fraction > 0 && whole < w {
+		partial = int(fraction*8 + 0.999)
+		partial = min(8, partial)
+		out.WriteString(color.Render(levels[partial-1]))
+	}
+	remaining := w - whole
+	if partial > 0 {
+		remaining--
+	}
+	if remaining > 0 {
+		out.WriteString(muted.Render(strings.Repeat("·", remaining)))
+	}
+	return out.String()
 }
 func wrap(s string, w int) []string {
 	if w < 1 {
@@ -499,8 +521,8 @@ func (m model) View() string {
 	if compact {
 		header = fmt.Sprintf("%-18s %-*s %11s  %s\n", "OWNER", max(8, m.w-43), "GROUP / PROCESS", "PSS", "RELATIVE")
 	} else {
-		groupWidth := max(24, min(72, m.w-78))
-		header = fmt.Sprintf("%-16s %-*s %5s %10s %-13s %9s %9s %9s\n", "OWNER", groupWidth, "GROUP / PROCESS", "COUNT", "PSS", "SHARE", "RSS", "PRIVATE", "VIRT")
+		groupWidth := max(24, min(72, m.w-85))
+		header = fmt.Sprintf("%-16s %-*s %5s %10s %-21s %9s %9s %9s\n", "OWNER", groupWidth, "GROUP / PROCESS", "COUNT", "PSS", "SHARE", "RSS", "PRIVATE", "VIRT")
 	}
 	b.WriteString(muted.Bold(true).Render(strings.TrimSuffix(header, "\n")) + "\n")
 	b.WriteString(muted.Render(strings.Repeat("─", max(1, m.w))) + "\n")
@@ -551,10 +573,10 @@ func (m model) View() string {
 				}
 				return "▸ " + g.owner
 			}(), 18), max(8, m.w-43), clip(label, max(8, m.w-43)), ps)
-			mw := min(10, max(3, m.w-len([]rune(lead))-7))
+			mw := min(20, max(3, m.w-len([]rune(lead))-7))
 			text = lead + meter(val, scale, mw, meterColor) + fmt.Sprintf(" %4.1f%%", float64(val)*100/float64(shareTotal))
 		} else {
-			groupWidth := max(24, min(72, m.w-78))
+			groupWidth := max(24, min(72, m.w-85))
 			owner, label, count := "  process", "", ""
 			var pss, rss, priv, virt, scale, shareTotal uint64
 			meterColor := green
@@ -572,7 +594,7 @@ func (m model) View() string {
 				scale, shareTotal = maxP, sum
 			}
 			share := fmt.Sprintf("%4.1f%%", float64(pss)*100/float64(shareTotal))
-			text = fmt.Sprintf("%-16s %-*s %5s %10s %-13s %9s %9s %9s", clip(owner, 16), groupWidth, clip(label, groupWidth), count, human(pss), meter(pss, scale, 7, meterColor)+" "+share, human(rss), human(priv), human(virt))
+			text = fmt.Sprintf("%-16s %-*s %5s %10s %-13s %9s %9s %9s", clip(owner, 16), groupWidth, clip(label, groupWidth), count, human(pss), meter(pss, scale, 14, meterColor)+" "+share, human(rss), human(priv), human(virt))
 		}
 		if i == m.cursor {
 			text = picked.Render(text)
