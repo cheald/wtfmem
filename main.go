@@ -181,6 +181,7 @@ func scan() snap {
 	}
 	gs := make([]group, 0, len(gm))
 	for _, g := range gm {
+		sort.Slice(g.ps, func(i, j int) bool { return g.ps[i].pss > g.ps[j].pss })
 		gs = append(gs, *g)
 	}
 	sort.Slice(gs, func(i, j int) bool { return gs[i].pss > gs[j].pss })
@@ -359,6 +360,17 @@ func clip(s string, w int) string {
 	}
 	return s + strings.Repeat(" ", w-len(r))
 }
+func largestProcessPSS(g group) uint64 {
+	if len(g.ps) == 0 {
+		return max(uint64(1), g.pss)
+	}
+	largest := uint64(1)
+	for _, p := range g.ps {
+		largest = max(largest, p.pss)
+	}
+	return largest
+}
+
 func meter(v, max uint64, w int, color lipgloss.Style) string {
 	if max == 0 {
 		max = 1
@@ -524,11 +536,11 @@ func (m model) View() string {
 		if compact {
 			label := g.owner + " / " + g.name
 			ps := human(g.pss)
-			val := g.pss
+			val, scale, shareTotal, meterColor := g.pss, maxP, sum, green
 			if r.p != nil {
 				label = "  " + r.p.name + fmt.Sprintf(" (PID %d)", r.p.pid)
 				ps = human(r.p.pss)
-				val = r.p.pss
+				val, scale, shareTotal, meterColor = r.p.pss, largestProcessPSS(g), max(uint64(1), g.pss), cyan
 			}
 			lead := fmt.Sprintf("%-18s %-*s %11s  ", clip(func() string {
 				if r.p != nil {
@@ -540,14 +552,16 @@ func (m model) View() string {
 				return "▸ " + g.owner
 			}(), 18), max(8, m.w-43), clip(label, max(8, m.w-43)), ps)
 			mw := min(10, max(3, m.w-len([]rune(lead))-7))
-			text = lead + meter(val, maxP, mw, green) + fmt.Sprintf(" %4.1f%%", float64(val)*100/float64(sum))
+			text = lead + meter(val, scale, mw, meterColor) + fmt.Sprintf(" %4.1f%%", float64(val)*100/float64(shareTotal))
 		} else {
 			groupWidth := max(24, min(72, m.w-78))
 			owner, label, count := "  process", "", ""
-			var pss, rss, priv, virt uint64
+			var pss, rss, priv, virt, scale, shareTotal uint64
+			meterColor := green
 			if r.p != nil {
 				label = r.p.name + fmt.Sprintf(" (PID %d)", r.p.pid)
 				pss, rss, priv, virt = r.p.pss, r.p.rss, r.p.priv, r.p.virt
+				scale, shareTotal, meterColor = largestProcessPSS(g), max(uint64(1), g.pss), cyan
 			} else {
 				owner = "▸ " + g.owner
 				if m.expanded[g.owner+"\x00"+g.name] {
@@ -555,9 +569,10 @@ func (m model) View() string {
 				}
 				label, count = g.name, strconv.Itoa(len(g.ps))
 				pss, rss, priv, virt = g.pss, g.rss, g.priv, g.virt
+				scale, shareTotal = maxP, sum
 			}
-			share := fmt.Sprintf("%4.1f%%", float64(pss)*100/float64(sum))
-			text = fmt.Sprintf("%-16s %-*s %5s %10s %-13s %9s %9s %9s", clip(owner, 16), groupWidth, clip(label, groupWidth), count, human(pss), meter(pss, maxP, 7, green)+" "+share, human(rss), human(priv), human(virt))
+			share := fmt.Sprintf("%4.1f%%", float64(pss)*100/float64(shareTotal))
+			text = fmt.Sprintf("%-16s %-*s %5s %10s %-13s %9s %9s %9s", clip(owner, 16), groupWidth, clip(label, groupWidth), count, human(pss), meter(pss, scale, 7, meterColor)+" "+share, human(rss), human(priv), human(virt))
 		}
 		if i == m.cursor {
 			text = picked.Render(text)
